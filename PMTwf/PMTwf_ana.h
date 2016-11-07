@@ -57,11 +57,14 @@ namespace larlite {
     bool  FitFlashWF(Int_t flash, Int_t ch);
     bool  FitFlash(Int_t flash);
     bool  EvalBaseline(Int_t ch);
+    void  ComputeResidual(Int_t flash, Int_t ch); 
+    bool  NeedNewPE(Int_t flash, Int_t ch);
     bool  GetBaselines();
-    bool  InitializeFitFcn(Int_t flash, Int_t ch);
+    TF1*  InitializeFitFcn(Int_t flash, Int_t ch);
     bool  IsFlashInBeam(Int_t flash);
     bool  IsFlashBeforeBeam(Int_t flash);
     bool  IsSummedWFHighbeforeBeam();
+    bool  IsAmplitudeHighEnough(Int_t flash, Int_t ch);
 
   protected:
     // ROOT TObject members
@@ -95,7 +98,9 @@ namespace larlite {
     Int_t               kSigmaRise;               // rise time index
     Int_t               kSigmaFall;               // fall time index
     Int_t               NpeaksFound;              // Full number of pulses found
-    std::vector<double> WFparameters;             //all parameters for a given WF
+    std::vector<double> WFparameters;             // all parameters for a given WF
+    std::vector<double> WFparLimitHigh;           // higher limits
+    std::vector<double> WFparLimitLow;            // Lower limits
     std::vector< std::vector<double> > AllWFparameters[32];// all parameters for a given event
     
 
@@ -110,6 +115,7 @@ namespace larlite {
     double              WFderivs[32][1500];       // array with all WF derivatives
     double              WF2ndDerivs[32][1500];    // array with all WF 2nd derivatives
     double              BNBwaveform[1500];        // BNB waveform
+    double              WFresidual[1500];         // residual for evaluating the fit performance
     double              Baselines[32];            // baselines
     double              BLrms[32];                // baselineRMS
     bool                isMC;                     // is this MC (e.g. is there a BNB data?)
@@ -124,6 +130,8 @@ namespace larlite {
     int                 event;                    // current event number
     double              beamWindowStart;          // start of beam window
     double              beamWindowEnd;            // end of beam window
+    double              errorLevel;               // error introduced to fit the WF
+    double              maxAmplitudeinFlash;
     
 
   };
