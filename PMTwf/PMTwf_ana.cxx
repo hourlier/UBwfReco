@@ -20,6 +20,8 @@
 #include "DataFormat/mctruth.h"
 #include "LArUtil/Geometry.h"
 
+
+
 double PulseShape(double x, double Amp, double tmax, double s_rise, double s_fall){
   double Amplitude = Amp;
   double mean = tmax;
@@ -50,8 +52,8 @@ namespace larlite {
   bool PMTwf_ana::initialize() {
     printOK = true;
     //printOK = false;
-    drawOutput = false;
-    //drawOutput = true;
+    //drawOutput = false;
+    drawOutput = true;
     if(!drawOutput){printOK = false;
       gROOT->SetBatch(kTRUE);
     }
@@ -72,8 +74,12 @@ namespace larlite {
     hWFtmp = new TH1D("hWFtmp","hWFtmp",1500,0,1500);
     hDerivativeWFtmp = new TH1D("hDerivativeWFtmp","hDerivativeWFtmp",1500,0,1500);
     h2ndDerivativeWFtmp = new TH1D("h2ndDerivativeWFtmp","h2ndDerivativeWFtmp",1500,0,1500);
-    //cEvent = new TCanvas("cEvent","cEvent",1000,700);
+    hFlashFinding = new TH1D("hFlashFinding","hFlashFinding",150 ,0,1500);
+    cEvent = new TCanvas("cEvent","cEvent",800,600);
     cIndivWF = new TCanvas("cIndivWF","cIndivWF",800,450);
+
+    cEvent->Divide(1,2);
+    
     //if(printOK)cIndivWF->Print("waveforms.pdf[");
     flashStartTimeOff = 50;
     flashEndTimeOff = 150;
@@ -89,28 +95,39 @@ namespace larlite {
 
   bool PMTwf_ana::analyze(storage_manager* storage) {
     LoadEventInfo(storage);
-    int IterFit = 0;
-    for(UInt_t flash = 0;flash < FlashesTimes.size(); flash++){
-      if(!IsFlashInBeam(flash))continue;        // process only flashes that are in the beam
-      if(IsFlashBeforeBeam(flash)) return true; // process only events that have no flash before the beam window
-      if(IsSummedWFHighbeforeBeam()) return true;
-      GetBaselines();
-      FindAllPulses();
-      for(Int_t ch = 0;ch < 32;ch++){
-	if(!IsAmplitudeHighEnough(flash, ch))continue;
-	//InitializeFitFcn(flash,ch);
-	FitFlashWF(flash,ch);
-	IterFit = 0;
-	while(NeedNewPE(flash,ch) == true && IterFit<5){
-	  FitFlashWF(flash,ch);
-	  IterFit++;
-	}
-	if(drawOutput)DrawFlashWF(flash,ch);
-      }
-    }
-    
+    GetBaselines();
+    FindAllPulses();
+    if(IsSummedWFHighbeforeBeam()) return true;
+    //FindFlashes();
+    //return true;
 
-    return true;
+    /*if(!isMC){
+      for(int ch = 0;ch < 32;ch++){
+	FilterWaveform(ch);
+	DrawFilter(ch);
+      }
+      return true;
+      } */   
+    //else{
+      int IterFit = 0;
+      for(UInt_t flash = 0;flash < FlashesTimes.size(); flash++){
+	if(!IsFlashInBeam(flash))continue;        // process only flashes that are in the beam
+	//if(IsFlashBeforeBeam(flash)) return true; // process only events that have no flash before the beam window
+	
+	for(Int_t ch = 0;ch < 32;ch++){
+	  if(!IsAmplitudeHighEnough(flash, ch))continue;
+	  InitializeFitFcn(flash,ch);
+	  FitFlashWF(flash,ch);
+	  IterFit = 0;
+	  while(NeedNewPE(flash,ch) == true && IterFit<5){
+	    FitFlashWF(flash,ch);
+	    IterFit++;
+	  }
+	  if(drawOutput)DrawFlashWF(flash,ch);
+	}
+      }
+      return true;
+      //}
   }
 
   //
@@ -130,11 +147,28 @@ namespace larlite {
   bool PMTwf_ana::IsSummedWFHighbeforeBeam(){
 
     double wfmin(10000), wfmax(0);
+    double threshold = 10;
     for(int tick = 0; tick < beamWindowStart-10; tick++){
       if(SummedWF[tick] > wfmax){wfmax = SummedWF[tick];}
       if(SummedWF[tick] < wfmin){wfmin = SummedWF[tick];}
     }
-    if(wfmax - wfmin > 100)return true;
+    /*cIndivWF->cd();
+    for(int tick = 0; tick<1500;tick++){
+      hWFtmp->SetBinContent(tick+1,SummedWF[tick]);
+    }
+    if(wfmax - wfmin > threshold){
+      hWFtmp->SetLineWidth(4);
+      hWFtmp->SetLineColor(2);
+    }
+    else{
+      hWFtmp->SetLineWidth(1);
+      hWFtmp->SetLineColor(602);
+    }
+    hWFtmp->Draw();
+    cIndivWF->Modified();
+    cIndivWF->Update();
+    cIndivWF->SaveAs(Form("plot/SummedWF_%d_%d_%d.png",run,subrun,event));*/
+    if(wfmax - wfmin > threshold)return true;
     else return false;
   }
 
@@ -234,7 +268,6 @@ namespace larlite {
     //FitFcn->Draw("same");
     
     TLine *lBaseline = new TLine(TMath::Max(1.,FlashesTimes[flash]-flashStartTimeOff),Baselines[ch],TMath::Min(FlashesTimes[flash]+flashEndTimeOff,1500.),Baselines[ch]);
-
     lBaseline->SetLineColor(2);
     lBaseline->SetLineWidth(2);
     lBaseline->SetLineStyle(2);
@@ -242,22 +275,14 @@ namespace larlite {
     lBaseline->Draw();
     
     pFullWF->cd();
-    TLatex text;
-    text.SetTextAlign(12);
-    text.SetTextSize(0.04);
-    text.DrawLatex(0.2,0.5,Form("Maplitude iside the flash: %.1f ADC",maxAmplitudeinFlash));
-    text.DrawLatex(0.2,0.55,Form("Found %lu Peaks",RecoPulseTimes.size()));
-    //hDerivativeWFtmp = GetDerivative1(ch);
-    //hDerivativeWFtmp->GetXaxis()->SetRange(TMath::Max(1.,FlashesTimes[flash]-flashStartTimeOff),TMath::Min(FlashesTimes[flash]+flashEndTimeOff,1500.));
-    //hDerivativeWFtmp->Draw();
-    /*for(UInt_t peak = 0; peak < RecoPulseTimesEvent[ch].size();peak++){
-      if(RecoPulseTimesEvent[ch][peak] > TMath::Max(0.,FlashesTimes[flash]-flashStartTimeOff) && RecoPulseTimesEvent[ch][peak] < TMath::Min(FlashesTimes[flash]+flashEndTimeOff,1500.)){
-	lReco= new TLine(RecoPulseTimesEvent[ch][peak],0.95*hDerivativeWFtmp->GetMinimum(),RecoPulseTimesEvent[ch][peak],1.05*hDerivativeWFtmp->GetMaximum());
-	lReco->SetLineColor(4);
-	lReco->SetLineWidth(1);
-	lReco->Draw();
-      }
-      }*/
+    TH1D *hwfFull = (TH1D*)hWFtmp->Clone("hwfFull");
+    hwfFull->GetXaxis()->SetRange(1,1500);
+    hwfFull->Draw();
+    //FilterWaveform(ch);
+    //TH1D *hfiltered = GetfilteredWF(ch);
+    //hfiltered->SetLineColor(2);
+    //hfiltered->Draw("same");
+    
 
     cIndivWF->Modified();
     cIndivWF->Update();
@@ -277,6 +302,50 @@ namespace larlite {
   //
 
   void PMTwf_ana::FilterWaveform(Int_t ch){
+    filteredWF[ch][0] = waveforms[ch][0];
+    filteredWF[ch][1] = waveforms[ch][1];
+    filteredWF[ch][2] = waveforms[ch][2];
+    filteredWF[ch][3] = waveforms[ch][3];
+    filteredWF[ch][1496] = waveforms[ch][1496];
+    filteredWF[ch][1497] = waveforms[ch][1497];
+    filteredWF[ch][1498] = waveforms[ch][1498];
+    filteredWF[ch][1499] = waveforms[ch][1499];
+    
+    int LastGoodTick = 0;
+    int NextGoodTick = 1;
+    
+    double LastGoodVal = 1;
+    double NextGoodVal = 1;
+    
+    for(int tick = 3;tick < 1497;tick++){//initialize the baseline array with values of the WF for flat enough parts
+      if(WFderivs[ch][tick-3] == 0 && WFderivs[ch][tick-2] == 0 && WFderivs[ch][tick-1] == 0 && WFderivs[ch][tick+1] == 0 && WFderivs[ch][tick+2] == 0 && WFderivs[ch][tick+3] == 0 && WFderivs[ch][tick] == 0 && waveforms[ch][tick] < 4095){
+	filteredWF[ch][tick] = waveforms[ch][tick];
+      }
+      else filteredWF[ch][tick] = 0;
+    }
+    
+    for(int i = 1;i<1499;i++){//re-run
+      if(filteredWF[ch][i] != 0){//non-zero values => good flat parts
+	LastGoodTick = i;
+	LastGoodVal = filteredWF[ch][i];
+      }
+      else{// zero values, need to search for the end, evaluate values at the begining and end of the zero part and fill it with a straight line
+	int j = i;
+	while(filteredWF[ch][j] == 0 && j<1499){j++;}//loop over j until we are no longer in a zero region
+	NextGoodTick = j;
+	NextGoodVal = filteredWF[ch][j];
+
+	filteredWF[ch][i] = LastGoodVal+(i-LastGoodTick)*(NextGoodVal-LastGoodVal)/(NextGoodTick-LastGoodTick);
+      }
+    }
+    
+  }
+  
+  //
+  //****************************************************************
+  //
+  
+  void PMTwf_ana::FilterWaveformOld(Int_t ch){
     double lastgoodsample = waveforms[ch][0];
     for(int tick = 0;tick < 1500;tick++){
       filteredWF[ch][tick] = waveforms[ch][tick];
@@ -583,7 +652,7 @@ namespace larlite {
   void PMTwf_ana::ComputeResidual(Int_t flash, Int_t ch){
     for(int tick = 0; tick < 1500;tick++){
       if(tick > FlashesTimes[flash]-flashStartTimeOff && tick < FlashesTimes[flash]+flashEndTimeOff){
-	WFresidual[tick] = (waveforms[ch][tick]-FitFcn->Eval(tick+0.5))/(FitFcn->Eval(tick+0.5)-2000);
+	WFresidual[tick] = (waveforms[ch][tick]-FitFcn->Eval(tick+0.5))/(FitFcn->Eval(tick+0.5)-(Baselines[ch]-50));
       }
       else WFresidual[tick] = 0;
     }
@@ -611,7 +680,7 @@ namespace larlite {
     int TimeSinceHigh = DT-5;
     bool InIntegrationWindow = false;
 
-    TH1D *hBaseline = new TH1D("hBaseline","hBaseline",100,2000,2100);
+    TH1D *hBaseline = new TH1D("hBaseline","hBaseline",1000,1800,2200);
     
     for(int tick = 0;tick<1500;tick++){
       if(TMath::Abs(WFderivs[ch][tick]) < threshold){
@@ -685,10 +754,10 @@ namespace larlite {
 
 	WFparameters.push_back(1.7); // rise time
 	WFparLimitHigh.push_back(3);
-	WFparLimitLow.push_back(0.5);
+	WFparLimitLow.push_back(0.01);
 	
 	WFparameters.push_back(3.5); // fall time
-	WFparLimitHigh.push_back(10);
+	WFparLimitHigh.push_back(5);
 	WFparLimitLow.push_back(1.5);
 
 	NpeaksFound++;
@@ -702,6 +771,14 @@ namespace larlite {
     for(UInt_t i = 0;i<WFparameters.size();i++){
       FitFcn->SetParameter(i,WFparameters[i]);
       FitFcn->SetParLimits(i,WFparLimitLow[i],WFparLimitHigh[i]);
+      if(i == 0)FitFcn->SetParName(i,"N_{peaks}");
+      else if(i == 1)FitFcn->SetParName(i,"baseline");
+      else{
+	if((i-2)%4==0)FitFcn->SetParName(i,Form("A_{%d}",(i-2)/4));
+	else if((i-3)%4==0)FitFcn->SetParName(i,Form("#mu_{%d}",(i-3)/4));
+	else if((i-4)/4==0)FitFcn->SetParName(i,Form("#sigma_{r,%d}",(i-4)/4));
+	else FitFcn->SetParName(i,Form("sigma_{f,%d}",(i-5)/4));
+      }
     }
     FitFcn->SetLineWidth(1);
     FitFcn->SetNpx(3000);
@@ -745,6 +822,63 @@ namespace larlite {
       return true;
     }
     else return false;
+  }
+  
+  //
+  //****************************************************************
+  //
+
+  void PMTwf_ana::DrawFilter(Int_t ch){
+    cEvent->cd(1);
+    TH1D *hWF = GetChWF(ch);
+    hWF->Draw();
+
+    TH1D *hfiltered = GetfilteredWF(ch);
+    hfiltered->SetLineColor(2);
+    hfiltered->Draw("same");
+
+    cEvent->cd(2);
+    TH1D *htrackBL = new TH1D(Form("htrackBL_%d_%d_%d_%d",run,subrun,event,ch),Form("htrackBL_%d_%d_%d_%d",run,subrun,event,ch),1000,1900,2400);
+    for(int i = 0;i<1500;i++){
+      htrackBL->Fill(filteredWF[ch][i]);
+    }
+
+    htrackBL->Draw();
+    TLatex *tex = new TLatex(2100,0.5*htrackBL->GetBinContent(htrackBL->GetMaximumBin()),Form("baseline RMS %f",htrackBL->GetRMS()));
+    tex->SetTextAlign(12);
+    tex->SetTextSize(0.05);
+    tex->Draw();
+    TLatex *tex2 = new TLatex(2100,0.4*htrackBL->GetBinContent(htrackBL->GetMaximumBin()),Form("Eval baseline RMS %f",BLrms[ch]));
+    tex2->SetTextAlign(12);
+    tex2->SetTextSize(0.05);
+    tex2->Draw();
+
+    cEvent->Modified();
+    cEvent->Update();
+    cEvent->SaveAs(Form("plot/FilterWF_%d_%d_%d_%d.pdf",run,subrun,event,ch));
+
+  }
+
+  //
+  //****************************************************************
+  //
+  
+  void PMTwf_ana::FindFlashes(){
+    hFlashFinding->Reset();
+    int time;
+    for(int ch = 0;ch < 32;ch++){
+      for(UInt_t pulse = 0; pulse < RecoPulseTimesEvent[ch].size();pulse++){
+	time = RecoPulseTimesEvent[ch][pulse]+3;
+	hFlashFinding->Fill(RecoPulseTimesEvent[ch][pulse],waveforms[ch][time]-Baselines[ch]);
+      }
+    }
+    cEvent->cd(1);
+    hEventWF->Draw("colz");
+    cEvent->cd(2);
+    hFlashFinding->Draw();
+    cEvent->Modified();
+    cEvent->Update();
+    cEvent->SaveAs(Form("plot/FlashSearch_%d_%d_%d.png",run,subrun,event));
   }
 
   //

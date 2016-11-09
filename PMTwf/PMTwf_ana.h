@@ -39,6 +39,7 @@ namespace larlite {
     bool  GetChannelGeo();
     void  DrawChPosition();
     void  FilterWaveform(Int_t ch);
+    void  FilterWaveformOld(Int_t ch);
     inline void  SetDTHitReco(double dTreco){DTHitReco = dTreco;}
     inline double  GetDTHitReco(){return DTHitReco;}
     bool  DrawEvent();
@@ -65,6 +66,8 @@ namespace larlite {
     bool  IsFlashBeforeBeam(Int_t flash);
     bool  IsSummedWFHighbeforeBeam();
     bool  IsAmplitudeHighEnough(Int_t flash, Int_t ch);
+    void  DrawFilter(Int_t ch);
+    void  FindFlashes();
 
   protected:
     // ROOT TObject members
@@ -82,9 +85,11 @@ namespace larlite {
     TH1D               *hSigma_rise_BNB;
     TH1D               *hSigma_fall_BNB;
     TH1D               *hTime_BNB;
+    TH1D               *hFlashFinding;
     TF1                *FitFcn;
 
-    std::vector<double> FlashesTimes;             // times of flashes for an event
+    std::vector<double> FlashesTimes;             // times of flashes for an event from opflash
+    std::vector<double> RecoFlashesTimes;         // times of flashes for an event that I reco
     std::vector<double> HitTimes;                 // ophit times for a given WF
     std::vector<double> AllHitTimes[32];          // array of 32 vectors of the hit times for each waveforms
     std::vector<double> RecoPulseTimes;           // times of the peaks found by FindPulses() for one WF
