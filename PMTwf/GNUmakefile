@@ -3,8 +3,8 @@
 #
 
 # specific names for this package
-DICT  = Example_PMTwfDict
-SHLIB = libExample_PMTwf.so
+DICT  = UBwfReco_PMTwfDict
+SHLIB = libUBwfReco_PMTwf.so
 SOURCES = $(filter-out $(DICT).cxx, $(wildcard *.cxx))
 FMWK_HEADERS = LinkDef.h $(DICT).h
 HEADERS = $(filter-out $(FMWK_HEADERS), $(wildcard *.h))
