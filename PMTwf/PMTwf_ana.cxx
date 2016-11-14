@@ -54,10 +54,10 @@ namespace larlite {
   bool PMTwf_ana::initialize() {
     printOK = true;
     //printOK = false;
-    //drawOutput = false;
-    drawOutput = true;
+    drawOutput = false;
+    //drawOutput = true;
     if(!drawOutput){printOK = false;
-      gROOT->SetBatch(kTRUE);
+      //gROOT->SetBatch(kTRUE);
     }
     gStyle->SetPalette(1);
     gStyle->SetOptStat(0);
@@ -75,9 +75,10 @@ namespace larlite {
     h2ndDerivativeWFtmp = new TH1D("h2ndDerivativeWFtmp","h2ndDerivativeWFtmp",1500,0,1500);
     hFlashFinding = new TH1D("hFlashFinding","hFlashFinding",150 ,0,1500);
     hFlashFindingDeriv = new TH1D("hFlashFindingDeriv","hFlashFindingDeriv",150 ,0,1500);
+    hFlashT0 = new TH1D("hFlashT0","hFlashT0",1000,210,340);
     cEvent = new TCanvas("cEvent","cEvent",1000,600);
     cIndivWF = new TCanvas("cIndivWF","cIndivWF",1600,900);
-
+    cEventT0 = new TCanvas("cEventT0","cEventT0",1000,700);
     cEvent->Divide(1,2);
     
     //if(printOK)cIndivWF->Print("waveforms.png[");
@@ -119,13 +120,13 @@ namespace larlite {
     if(IsSummedWFHighbeforeBeam()){std::cout << "REJECTED : flash before beam window" << std::endl; return true;}
     recoFlashTime = FindFlash();
     if(recoFlashTime == -1) {std::cout << "REJECTED : no flash in beam window" << std::endl; return true;}
+    
     FitRangeMin = recoFlashTime-25;
     FitRangeMax = recoFlashTime+100;
 
     int IterFit = 0;
     for(int ch = 0;ch < 32; ch++){
       std::cout << "\t" << ch << std::endl;
-      //if(BLrms[ch] > 1.5)continue;
       if(!IsAmplitudeHighEnough(ch))continue;//{std::cout << "ch" << ch << " with too low amplitude" << std::endl;continue;}
       InitializeFitFcn(ch);
       FitWF(ch);
@@ -138,38 +139,9 @@ namespace larlite {
       }
       if(drawOutput)DrawWF(ch);
     }
+    std::cout << FindFlashT0() << std::endl;
     T->Fill();
     return true;
-    //FindFlashes();
-    //return true;
-
-    /*if(!isMC){
-      for(int ch = 0;ch < 32;ch++){
-	FilterWaveform(ch);
-	DrawFilter(ch);
-      }
-      return true;
-      } */   
-    //else{
-      for(UInt_t flash = 0;flash < FlashesTimes.size(); flash++){
-	if(!IsFlashInBeam(flash))continue;        // process only flashes that are in the beam
-	//if(IsFlashBeforeBeam(flash)) return true; // process only events that have no flash before the beam window
-	
-	for(Int_t ch = 0;ch < 32;ch++){
-	  if(BLrms[ch] > 1.5)continue;
-	  if(!IsAmplitudeHighEnough(flash, ch))continue;
-	  InitializeFitFcn(flash,ch);
-	  FitFlashWF(flash,ch);
-	  IterFit = 0;
-	  while(NeedNewPE(flash,ch) == true && IterFit<5){
-	    FitFlashWF(flash,ch);
-	    IterFit++;
-	  }
-	  if(drawOutput)DrawFlashWF(flash,ch);
-	}
-      }
-      return true;
-      //}
   }
 
   //
@@ -177,8 +149,6 @@ namespace larlite {
   //
   
   bool PMTwf_ana::finalize() {
-    //DrawChPosition();
-    //if(printOK)cIndivWF->Print("waveforms.png]");
     if(_fout){
       T->Write();
     }
@@ -197,22 +167,6 @@ namespace larlite {
       if(SummedWF[tick] > wfmax){wfmax = SummedWF[tick];}
       if(SummedWF[tick] < wfmin){wfmin = SummedWF[tick];}
     }
-    /*cIndivWF->cd();
-    for(int tick = 0; tick<1500;tick++){
-      hWFtmp->SetBinContent(tick+1,SummedWF[tick]);
-    }
-    if(wfmax - wfmin > threshold){
-      hWFtmp->SetLineWidth(4);
-      hWFtmp->SetLineColor(2);
-    }
-    else{
-      hWFtmp->SetLineWidth(1);
-      hWFtmp->SetLineColor(602);
-    }
-    hWFtmp->Draw();
-    cIndivWF->Modified();
-    cIndivWF->Update();
-    cIndivWF->SaveAs(Form("plot/SummedWF_%d_%d_%d.png",run,subrun,event));*/
     if(wfmax - wfmin > threshold)return true;
     else return false;
   }
@@ -1129,7 +1083,7 @@ namespace larlite {
 
     double flashPoint = -1;
     hFlashFindingDeriv->GetXaxis()->SetRange((beamWindowStart-10)/10,(beamWindowEnd+50)/10);
-    if(hFlashFinding->GetBinContent(hFlashFindingDeriv->GetMaximumBin())>130){
+    if(hFlashFinding->GetBinContent(hFlashFindingDeriv->GetMaximumBin())>200){
       flashPoint = (hFlashFindingDeriv->GetMaximumBin()-0.5)*hFlashFindingDeriv->GetBinWidth(1);
     }
     
@@ -1247,6 +1201,42 @@ namespace larlite {
       PElistWF.push_back(newPE);
     }
     PElist[ch] = PElistWF;
+  }
+
+  //
+  //****************************************************************
+  //
+
+  double PMTwf_ana::FindFlashT0(){
+    hFlashT0->Reset();
+    for(int ch = 0;ch<32;ch++){
+      for(UInt_t pe=0;pe<PElist[ch].size();pe++){
+	//hFlashT0->Fill(PElist[ch][pe].GetTime());
+	hFlashT0->Fill(PElist[ch][pe].GetTime(),PElist[ch][pe].GetAmplitude());
+      }
+    }
+    double MCt0=1500;
+    if(isMC){
+      for(int ch = 0;ch<32;ch++){
+	for(UInt_t pe = 0;pe < MChitTimes[ch].size();pe++){
+	  if(MChitTimes[ch][pe] < MCt0){MCt0 = MChitTimes[ch][pe];}
+	}
+      }
+    }
+
+    cEventT0->cd();
+    hFlashT0->SetMarkerStyle(7);
+    hFlashT0->Draw();
+    if(isMC){
+      TLine *lT0mc = new TLine(MCt0,hFlashT0->GetBinContent(hFlashT0->GetMinimumBin()),MCt0,hFlashT0->GetBinContent(hFlashT0->GetMaximumBin()));
+      lT0mc->SetLineWidth(1);
+      lT0mc->SetLineColor(4);
+      lT0mc->Draw();
+    }
+    cEventT0->Modified();
+    cEventT0->Update();
+    cEventT0->SaveAs(Form("plot/cEventT0_%d_%d_%02d.png",run,subrun,event));
+    return 0;
   }
   
   //

@@ -77,16 +77,19 @@ namespace larlite {
     bool    IsAmplitudeHighEnough(Int_t ch);
     void    DrawFilter(Int_t ch);
     double  FindFlash();
+    double  FindFlashT0();
 
   protected:
     // ROOT TObject members
     TH1D               *hBNBwf;
     TH1D               *hWFtmp;
+    TH1D               *hFlashT0;
     TH1D               *hDerivativeWFtmp;
     TH1D               *h2ndDerivativeWFtmp;
     TH2D               *hEventWF;
     TCanvas            *cEvent;
     TCanvas            *cIndivWF;
+    TCanvas            *cEventT0;
     TPad               *pEvent2D;
     TPad               *pWaveform;
     TPad               *pDerivative;
@@ -106,6 +109,7 @@ namespace larlite {
     std::vector<double> PEwf1flash;               // PE per WF for 1 flash
     std::vector< std::vector<double> > PEflashWF; // PE per waveform for each flash
     std::vector<PEhit>  PElist[32];
+    wfInfo              RecoWFinfo[32];
     
     
     // Fit parameters
