@@ -10,6 +10,8 @@
 #pragma link off all functions;
 
 #pragma link C++ class larlite::PMTwf_ana+;
+#pragma link C++ class PEhit+;
+#pragma link C++ class wfInfo+;
 //ADD_NEW_CLASS ... do not change this line
 #endif
 

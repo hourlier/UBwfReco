@@ -50,6 +50,7 @@ namespace larlite {
     TH1D*   GetfilteredWF(Int_t ch);
     TH1D*   GetDerivative1(Int_t ch);
     TH1D*   GetDerivative2(Int_t ch);
+    bool    PMTpreCut();
     bool    GetAllDerivatives();
     bool    GetDerivativeWF(Int_t ch);
     bool    Get2ndDerivativeWF(Int_t ch);
@@ -61,6 +62,7 @@ namespace larlite {
     bool    FitFlashWF(Int_t flash, Int_t ch);
     bool    FitFlash(Int_t flash);
     void    FitWF(Int_t ch);
+    void    IterateFitProcess(Int_t ch);
     bool    EvalBaseline(Int_t ch);
     void    ComputeResidual(Int_t flash, Int_t ch); 
     void    ComputeResidual(Int_t ch);
@@ -77,7 +79,8 @@ namespace larlite {
     bool    IsAmplitudeHighEnough(Int_t ch);
     void    DrawFilter(Int_t ch);
     double  FindFlash();
-    double  FindFlashT0();
+    void    FindFlashT0();
+    void    GetBNBTime();
 
   protected:
     // ROOT TObject members
@@ -86,6 +89,8 @@ namespace larlite {
     TH1D               *hFlashT0;
     TH1D               *hDerivativeWFtmp;
     TH1D               *h2ndDerivativeWFtmp;
+    TH1D               *hDeltaT0;
+    TH1D               *hPreCut;
     TH2D               *hEventWF;
     TCanvas            *cEvent;
     TCanvas            *cIndivWF;
@@ -151,6 +156,9 @@ namespace larlite {
     double              flashEndTimeOff;          // offset for flash window determination
     double              newPEth;
     double              recoFlashTime;
+    double              recoT0;
+    double              MC_T0;
+    bool                MC_isCCQE;                // is CCQE?
     int                 run;                      // current run number
     int                 subrun;                   // current subrun number
     int                 event;                    // current event number
@@ -160,6 +168,7 @@ namespace larlite {
     double              maxAmplitudeinFlash;
     int                 FitRangeMin;
     int                 FitRangeMax;
+    double              BNBparameters[5];         // baseline, amplitude, time, sigmas (rise/fall) 
     
 
   };

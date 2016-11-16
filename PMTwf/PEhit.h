@@ -18,12 +18,14 @@ class PEhit{
   double GetAmplitude();
   double GetSigmaRise();
   double GetSigmaFall();
+  double GetPEcharge();
 
  private:
   double _time;
   double _amplitude;
   double _sigma_r;
   double _sigma_f;
+  double _peCharge;
 };
 
 class wfInfo : public std::vector<PEhit>{
@@ -33,6 +35,7 @@ class wfInfo : public std::vector<PEhit>{
   wfInfo();
   wfInfo(double baseline, double baselineRMS, std::vector<PEhit> PElist);
   ~wfInfo();
+  void               SetWF(double baseline, double baselineRMS, std::vector<PEhit> PElist);
   void               SetBaseline(double baseline, double baselineRMS);
   void               SetPElist(std::vector<PEhit> PElist);
   void               AddPE(PEhit newPE);
@@ -40,13 +43,15 @@ class wfInfo : public std::vector<PEhit>{
   int                GetNPE();
   double             GetBaseline();
   double             GetBaselineRMS();
+  double             GetRecoCharge();
   std::vector<PEhit> GetPElist();
-  PEhit              GetPE(int PEindex);
+  PEhit              GetPE(unsigned int PEindex);
 
  private:
   
   double _baseline;
   double _baselineRMS;
+  double _chargeReconstructed;
   std::vector<PEhit> _PElist;
   
 };

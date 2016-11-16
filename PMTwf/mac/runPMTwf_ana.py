@@ -20,7 +20,7 @@ for x in xrange(len(sys.argv)-1):
 my_proc.set_io_mode(fmwk.storage_manager.kREAD)
 
 # Specify output root file name
-my_proc.set_ana_output_file("PMTwf_ana_RESULTS.root");
+my_proc.set_ana_output_file("RESULTS.root");
 
 # Attach an analysis unit ... here we use a base class which does nothing.
 # Replace with your analysis unit if you wish.
@@ -32,7 +32,7 @@ print  "Finished configuring ana_processor. Start event loop!"
 print
 
 # Let's run it.
-my_proc.run(0,10);
+my_proc.run(10);
 
 # done!
 print

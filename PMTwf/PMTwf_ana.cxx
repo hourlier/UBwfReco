@@ -19,7 +19,9 @@
 #include "DataFormat/opflash.h"
 #include "DataFormat/mctrack.h"
 #include "DataFormat/mctruth.h"
+#include "DataFormat/mcnu.h"
 #include "DataFormat/simphotons.h"
+#include "Base/MCConstants.h"
 #include "LArUtil/Geometry.h"
 
 
@@ -54,11 +56,12 @@ namespace larlite {
   bool PMTwf_ana::initialize() {
     printOK = true;
     //printOK = false;
-    drawOutput = false;
-    //drawOutput = true;
+    //drawOutput = false;
+    drawOutput = true;
     if(!drawOutput){printOK = false;
       //gROOT->SetBatch(kTRUE);
     }
+    //gROOT->SetBatch(kTRUE);
     gStyle->SetPalette(1);
     gStyle->SetOptStat(0);
     SetDTHitReco(25);
@@ -71,14 +74,17 @@ namespace larlite {
     hEventWF = new TH2D("hEventWF","hEventWF;tick;Channel",1500,0,1500,32,0,32);
     hBNBwf = new TH1D("hBNBwf","hBNBwf;tick;ADC",1500,0,1500);
     hWFtmp = new TH1D("hWFtmp","hWFtmp",1500,0,1500);
+    hDeltaT0 = new TH1D("hDeltaT0","hDeltaT0",300,-10,20);
     hDerivativeWFtmp = new TH1D("hDerivativeWFtmp","hDerivativeWFtmp",1500,0,1500);
     h2ndDerivativeWFtmp = new TH1D("h2ndDerivativeWFtmp","h2ndDerivativeWFtmp",1500,0,1500);
     hFlashFinding = new TH1D("hFlashFinding","hFlashFinding",150 ,0,1500);
     hFlashFindingDeriv = new TH1D("hFlashFindingDeriv","hFlashFindingDeriv",150 ,0,1500);
-    hFlashT0 = new TH1D("hFlashT0","hFlashT0",1000,210,340);
+    hFlashT0 = new TH1D("hFlashT0","hFlashT0",130,210,340);
+    hPreCut = new TH1D("hPreCut","hPreCut",250,0,1500);
     cEvent = new TCanvas("cEvent","cEvent",1000,600);
     cIndivWF = new TCanvas("cIndivWF","cIndivWF",1600,900);
     cEventT0 = new TCanvas("cEventT0","cEventT0",1000,700);
+    cEventT0->Divide(1,2);
     cEvent->Divide(1,2);
     
     //if(printOK)cIndivWF->Print("waveforms.png[");
@@ -104,7 +110,11 @@ namespace larlite {
     T->Branch("subrun", &subrun);
     T->Branch("event" , &event);
     T->Branch("BNB_recoTime", &BNB_recoTime);
+    T->Branch("BNBparameters",BNBparameters,"BNBparameters[5]/D");
     T->Branch("isMC", &isMC);
+    T->Branch("MC_T0",&MC_T0);
+    T->Branch("recoT0",&recoT0);
+    T->Branch("RecoWFinfo","wfInfo", &RecoWFinfo);
 
     return true;
   }
@@ -114,32 +124,27 @@ namespace larlite {
   //
 
   bool PMTwf_ana::analyze(storage_manager* storage) {
-    LoadEventInfo(storage);
+    if(!LoadEventInfo(storage))return true;
+    if(isMC && !MC_isCCQE){std::cout << "REJECTED : not CCQE" << std::endl;return true;}
     GetBaselines();
     FindAllPulses();
-    if(IsSummedWFHighbeforeBeam()){std::cout << "REJECTED : flash before beam window" << std::endl; return true;}
+    if(!PMTpreCut())return true;
     recoFlashTime = FindFlash();
     if(recoFlashTime == -1) {std::cout << "REJECTED : no flash in beam window" << std::endl; return true;}
-    
+    if(!isMC){GetBNBTime();}
     FitRangeMin = recoFlashTime-25;
     FitRangeMax = recoFlashTime+100;
 
-    int IterFit = 0;
     for(int ch = 0;ch < 32; ch++){
       std::cout << "\t" << ch << std::endl;
       if(!IsAmplitudeHighEnough(ch))continue;//{std::cout << "ch" << ch << " with too low amplitude" << std::endl;continue;}
-      InitializeFitFcn(ch);
-      FitWF(ch);
-      std::cout << FitFcn->GetChisquare() << "/" << FitFcn->GetNDF() << "  =  " << FitFcn->GetChisquare()/FitFcn->GetNDF() << "\t" << FitFcn->GetProb() << std::endl;
-      IterFit = 0;
-      while(NeedNewPE(ch) == true && IterFit<10){
-	FitWF(ch);
-	std::cout << FitFcn->GetChisquare() << "/" << FitFcn->GetNDF() << "  =  " << FitFcn->GetChisquare()/FitFcn->GetNDF() <<"\t" <<FitFcn->GetProb() << std::endl;
-	IterFit++;
-      }
-      if(drawOutput)DrawWF(ch);
+      IterateFitProcess(ch);
+      //if(drawOutput)DrawWF(ch);
+      RecoWFinfo[ch].SetWF(Baselines[ch],BLrms[ch],PElist[ch]);
     }
-    std::cout << FindFlashT0() << std::endl;
+    FindFlashT0();
+    if(isMC){std::cout << MC_T0 << "\t" << recoT0 << std::endl;}
+    else{std::cout << BNB_recoTime << "\t" << recoT0 << std::endl;}
     T->Fill();
     return true;
   }
@@ -150,8 +155,29 @@ namespace larlite {
   
   bool PMTwf_ana::finalize() {
     if(_fout){
+      hDeltaT0->Write();
       T->Write();
     }
+    return true;
+  }
+
+  //
+  //****************************************************************
+  //
+
+  bool PMTwf_ana::PMTpreCut(){
+    if(IsSummedWFHighbeforeBeam()){std::cout << "REJECTED : flash before beam window" << std::endl; return false;}
+    hPreCut->Reset();
+    for(int ch = 0; ch<32; ch++){
+      for(UInt_t pulse = 0; pulse < RecoPulseTimesEvent[ch].size();pulse++){
+	if(RecoPulseTimesEvent[ch][pulse] > beamWindowStart-10 && RecoPulseTimesEvent[ch][pulse] < beamWindowEnd+20)hPreCut->Fill(RecoPulseTimesEvent[ch][pulse]);
+      }
+    }
+
+    int bin = 0;
+    while(hPreCut->GetBinContent(bin+1) < 20 && bin < hPreCut->GetNbinsX()){bin++;}
+    if(hPreCut->GetBinCenter(bin+1) > beamWindowEnd){std::cout << "REJECTED : 20PE limit in beam window not achieved" << std::endl; return false;}
+
     return true;
   }
 
@@ -313,10 +339,10 @@ namespace larlite {
       cIndivWF->SaveAs(Form("plot/waveform_%d_%d_%d_%02d.png",run,subrun,event,ch));
       cEvent->SaveAs(Form("plot/FullWF_%d_%d_%d_%02d.png",run,subrun,event,ch));
     }
-    if(_fout){
-      _fout->cd();
-      cIndivWF->Write();
-    }
+    //if(_fout){
+    //  _fout->cd();
+    //  cIndivWF->Write();
+    //}
   }
 
   
@@ -525,6 +551,7 @@ namespace larlite {
     TH1D *hBNBwf = new TH1D(Form("hBNBwf_run%d_%d_evt%d",run,subrun,event),Form("hBNBwf_run%d_%d_evt%d",run,subrun,event),1500,0,1500);
     for(int tick = 0; tick < 1500; tick++){
       hBNBwf->SetBinContent(tick+1,BNBwaveform[tick]);
+      hBNBwf->SetBinError(tick+1,0.5);
     }
     return hBNBwf;
   }
@@ -696,6 +723,10 @@ namespace larlite {
 	}
       }
     }
+    if(mc){
+      if(mc->at(0).GetNeutrino().InteractionType() == simb::kCCQE){MC_isCCQE = true;}
+      else{MC_isCCQE = false;}
+    }
     if(mc || photonInfo){isMC = true;}else{isMC = false;}
     
     std::cout << "Run #" << storage->run_id() << "_" << storage->subrun_id() << "\t event #" << storage->event_id() << std::endl;
@@ -705,6 +736,7 @@ namespace larlite {
 
     //GetWaveforms
     for(Int_t i = 0;i<1500;i++){SummedWF[i] = 0;}
+    if(!opdetwaveform){std::cout << "\t \t ERROR >>>>> NO OPDETWAVEFORM" << std::endl;return false;}
     for(UInt_t wf = 0;wf < opdetwaveform->size();wf++){
       if(opdetwaveform->at(wf).ChannelNumber() == 38){
         for(UInt_t tick = 0;tick < 1500;tick++){BNBwaveform[tick] = opdetwaveform->at(wf)[tick];}
@@ -725,26 +757,30 @@ namespace larlite {
     FlashesTimes.clear();
     PEwf1flash.clear();
     PEflashWF.clear();
-    for(UInt_t flash = 0;flash<opflashes->size();flash++){
-      FlashesTimes.push_back(opflashes->at(flash).Time()*64.);
-      flashStartTime = opflashes->at(flash).Time()*64.-flashStartTimeOff;
-      flashEndTime = opflashes->at(flash).Time()*64.+flashEndTimeOff;
-      PEwf1flash.clear();
-      for(int wf = 0; wf < 32; wf++){
-	PEwf1flash.push_back(opflashes->at(flash).PE(wf));
+    if(opflashes){
+      for(UInt_t flash = 0;flash<opflashes->size();flash++){
+	FlashesTimes.push_back(opflashes->at(flash).Time()*64.);
+	flashStartTime = opflashes->at(flash).Time()*64.-flashStartTimeOff;
+	flashEndTime = opflashes->at(flash).Time()*64.+flashEndTimeOff;
+	PEwf1flash.clear();
+	for(int wf = 0; wf < 32; wf++){
+	  PEwf1flash.push_back(opflashes->at(flash).PE(wf));
+	}
+	PEflashWF.push_back(PEwf1flash);
       }
-      PEflashWF.push_back(PEwf1flash);
     }
     
     // GetHitInfo
-    for(int wf = 0; wf < 32; wf++){
-      HitTimes.clear();
-      for(UInt_t hit = 0; hit < ophits->size();hit++){
-	if(ophits->at(hit).OpChannel() == wf){
-	  HitTimes.push_back(ophits->at(hit).PeakTime()*64-DTHitReco);
+    if(ophits){
+      for(int wf = 0; wf < 32; wf++){
+	HitTimes.clear();
+	for(UInt_t hit = 0; hit < ophits->size();hit++){
+	  if(ophits->at(hit).OpChannel() == wf){
+	    HitTimes.push_back(ophits->at(hit).PeakTime()*64-DTHitReco);
+	  }
 	}
+	AllHitTimes[wf] = HitTimes;
       }
-      AllHitTimes[wf] = HitTimes;
     }
     return true;
   }
@@ -798,6 +834,20 @@ namespace larlite {
     Baselines[ch] = FitFcn->GetParameter(1);
     SetPElist(ch);
     
+  }
+
+  //
+  //****************************************************************
+  //
+
+  void PMTwf_ana::IterateFitProcess(Int_t ch){
+    int IterFit = 0;
+    InitializeFitFcn(ch);
+    FitWF(ch);
+    while(NeedNewPE(ch) == true && IterFit<10){
+      FitWF(ch);
+      IterFit++;
+    }
   }
 
   //
@@ -1084,7 +1134,7 @@ namespace larlite {
     double flashPoint = -1;
     hFlashFindingDeriv->GetXaxis()->SetRange((beamWindowStart-10)/10,(beamWindowEnd+50)/10);
     if(hFlashFinding->GetBinContent(hFlashFindingDeriv->GetMaximumBin())>200){
-      flashPoint = (hFlashFindingDeriv->GetMaximumBin()-0.5)*hFlashFindingDeriv->GetBinWidth(1);
+      flashPoint = (hFlashFindingDeriv->GetMaximumBin())*hFlashFindingDeriv->GetBinWidth(1);
     }
     
     return flashPoint;
@@ -1156,11 +1206,11 @@ namespace larlite {
 
       WFparameters.push_back(1.7); // rise time
       WFparLimitHigh.push_back(2);
-      WFparLimitLow.push_back(1.5);
+      WFparLimitLow.push_back(1);
 	
       WFparameters.push_back(3.5); // fall time
-      WFparLimitHigh.push_back(3.7);
-      WFparLimitLow.push_back(3.3);
+      WFparLimitHigh.push_back(4);
+      WFparLimitLow.push_back(2.7);
 
       NpeaksFound++;
     }
@@ -1207,38 +1257,109 @@ namespace larlite {
   //****************************************************************
   //
 
-  double PMTwf_ana::FindFlashT0(){
+  void PMTwf_ana::FindFlashT0(){
     hFlashT0->Reset();
     for(int ch = 0;ch<32;ch++){
+      if(PElist[ch].size() < 3)continue;
       for(UInt_t pe=0;pe<PElist[ch].size();pe++){
-	//hFlashT0->Fill(PElist[ch][pe].GetTime());
-	hFlashT0->Fill(PElist[ch][pe].GetTime(),PElist[ch][pe].GetAmplitude());
+	if(PElist[ch][pe].GetTime() > recoFlashTime-10 && PElist[ch][pe].GetTime() < recoFlashTime+20){
+	  //hFlashT0->Fill(PElist[ch][pe].GetTime());
+	  hFlashT0->Fill(PElist[ch][pe].GetTime(),PElist[ch][pe].GetAmplitude());
+	}
       }
     }
-    double MCt0=1500;
+    for(int i = 0;i<hFlashT0->GetNbinsX();i++){
+      hFlashT0->SetBinError(i+1,0);
+    }
+    MC_T0=1500;
     if(isMC){
       for(int ch = 0;ch<32;ch++){
 	for(UInt_t pe = 0;pe < MChitTimes[ch].size();pe++){
-	  if(MChitTimes[ch][pe] < MCt0){MCt0 = MChitTimes[ch][pe];}
+	  if(MChitTimes[ch][pe] < MC_T0){MC_T0 = MChitTimes[ch][pe];}
 	}
       }
     }
 
-    cEventT0->cd();
+    double bin = 1;
+    while(bin < hFlashT0->GetNbinsX() && hFlashT0->GetBinContent(bin+1) < 200){bin++;}
+    if(bin < hFlashT0->GetNbinsX()){
+      recoT0 = hFlashT0->GetBinCenter(bin)-0.5*hFlashT0->GetBinWidth(1);
+      // at this point, we have a T0 in a tick look for PE in this tick to see which arrives first
+      double Tmin = recoT0;
+      double Tmax = recoT0+hFlashT0->GetBinWidth(1);
+      double T0 = 1500;
+      for(int ch = 0; ch< 32; ch++){
+	for(UInt_t pe=0;pe<PElist[ch].size();pe++){
+	  if(PElist[ch][pe].GetTime() > Tmin && PElist[ch][pe].GetTime() < Tmax){
+	    if(PElist[ch][pe].GetTime() < T0){T0 = PElist[ch][pe].GetTime();}
+	  }
+	}
+      }
+      if(T0 != 1500)recoT0 = T0;
+    }
+    else{recoT0 = recoFlashTime;}
+    
+    if(isMC){
+      hDeltaT0->Fill(recoT0-MC_T0);
+    }
+    else{
+      hDeltaT0->Fill(recoT0-BNB_recoTime);
+    }
+
+    /*cEventT0->Clear();
+    cEventT0->Divide(1,2);
+    cEventT0->cd(1);
+    hEventWF->GetXaxis()->SetRange(hFlashT0->GetXaxis()->GetXmin(),hFlashT0->GetXaxis()->GetXmax());
+    hEventWF->Draw("colz");
+
+    cEventT0->cd(2);
     hFlashT0->SetMarkerStyle(7);
     hFlashT0->Draw();
     if(isMC){
-      TLine *lT0mc = new TLine(MCt0,hFlashT0->GetBinContent(hFlashT0->GetMinimumBin()),MCt0,hFlashT0->GetBinContent(hFlashT0->GetMaximumBin()));
+      TLine *lT0mc = new TLine(MC_T0,hFlashT0->GetBinContent(hFlashT0->GetMinimumBin()),MC_T0,hFlashT0->GetBinContent(hFlashT0->GetMaximumBin()));
       lT0mc->SetLineWidth(1);
       lT0mc->SetLineColor(4);
       lT0mc->Draw();
     }
-    cEventT0->Modified();
+
+    TLine *lFlashEvent = new TLine(recoFlashTime,hFlashT0->GetBinContent(hFlashT0->GetMinimumBin()),recoFlashTime,hFlashT0->GetBinContent(hFlashT0->GetMaximumBin()));
+    lFlashEvent->SetLineWidth(2);
+    lFlashEvent->SetLineColor(2);
+    lFlashEvent->Draw();
+
+    TLine *lThreshold = new TLine(hFlashT0->GetXaxis()->GetXmin(),200,hFlashT0->GetXaxis()->GetXmax(),200);
+    lThreshold->SetLineColor(2);
+    lThreshold->SetLineWidth(1);
+    lThreshold->Draw();
+    
+    EventT0->Modified();
     cEventT0->Update();
-    cEventT0->SaveAs(Form("plot/cEventT0_%d_%d_%02d.png",run,subrun,event));
-    return 0;
+    cEventT0->SaveAs(Form("plot/cEventT0_%d_%d_%02d.png",run,subrun,event));*/
   }
-  
+
+  //
+  //****************************************************************
+  //
+
+  void PMTwf_ana::GetBNBTime(){
+    TF1 *fBNB = new TF1(Form("fBNB_%d_%d_%02d", run, subrun, event),WFshape,0,1500,6);
+    fBNB->SetParameters(1,2050,2048,5,1.5,3);
+    fBNB->FixParameter(0,1);
+    fBNB->SetNpx(3000);
+    cEvent->cd();
+    TH1D *hBNB = GetBNBwf();
+    hBNB->GetXaxis()->SetRange(1,200);
+    hBNB->Fit(Form("%s",fBNB->GetName()),"rl",0,200);
+    BNB_recoTime = fBNB->GetParameter(3);
+    BNBparameters[0] = fBNB->GetParameter(1);
+    BNBparameters[1] = fBNB->GetParameter(2);
+    BNBparameters[2] = fBNB->GetParameter(3);
+    BNBparameters[3] = fBNB->GetParameter(4);
+    BNBparameters[4] = fBNB->GetParameter(5);
+    cEvent->Modified();
+    cEvent->Update();
+  }
+
   //
   //****************************************************************
   //
