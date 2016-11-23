@@ -38,6 +38,8 @@ namespace larlite {
     virtual bool analyze(storage_manager* storage);
     virtual bool finalize();
 
+    void    initializePElist();
+    void    CleanPElist();
     bool    GetChannelGeo();
     void    DrawChPosition();
     void    FilterWaveform(Int_t ch);
@@ -79,8 +81,10 @@ namespace larlite {
     bool    IsAmplitudeHighEnough(Int_t ch);
     void    DrawFilter(Int_t ch);
     double  FindFlash();
-    void    FindFlashT0();
+    bool    FindFlashT0();
+    void    GetReferenceTime();
     void    GetBNBTime();
+    void    GetMCT0();
 
   protected:
     // ROOT TObject members
@@ -113,8 +117,8 @@ namespace larlite {
     std::vector<double> RecoPulseTimesEvent[32];  // times of the peaks found by FindPulses() for all WF
     std::vector<double> PEwf1flash;               // PE per WF for 1 flash
     std::vector< std::vector<double> > PEflashWF; // PE per waveform for each flash
-    std::vector<PEhit>  PElist[32];
-    wfInfo              RecoWFinfo[32];
+    std::vector< std::vector<PEhit> >  PElist;
+    std::vector<wfInfo> RecoWFinfo;               // full information on the waveforms
     
     
     // Fit parameters
@@ -150,6 +154,9 @@ namespace larlite {
     bool                isMC;                     // is this MC (e.g. is there a BNB data?)
     bool                drawOutput;               // should I draw each reconstructed WF?
     bool                printOK;                  // should I print the output in a pdf file?
+    bool                T0wellReconstructed;      // is T0 well reconstruected?
+    bool                is20PE;                   // does this event satisfies the 20PE limit?
+    bool                isFlashBeforBeam;         // is there a flash before the beam?
     double              flashStartTime;           // start time of the current flash
     double              flashEndTime;             // end time of the current flash
     double              flashStartTimeOff;        // offset for flash window determination
