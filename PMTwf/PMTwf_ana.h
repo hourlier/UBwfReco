@@ -133,7 +133,8 @@ namespace larlite {
     std::vector<double> WFparLimitHigh;           // higher limits
     std::vector<double> WFparLimitLow;            // Lower limits
     std::vector< std::vector<double> > AllWFparameters[32];// all parameters for a given event
-    std::vector<double> MChitTimes[32];                // time for each MC photons
+    std::vector<double> MChitTimes[32];           // time for each MC photons
+    std::vector<int>    MCparticles;              // list of MC particles in event_mctrack
     
 
     double              xyzCh[32][3];             // Position of the optical chanels
@@ -164,7 +165,8 @@ namespace larlite {
     double              newPEth;
     double              recoFlashTime;
     double              recoT0;
-    double              MC_T0;
+    double              MC_T0;                    // T0 in the waveforms
+    double              MC_Neutrino_vertex[4];    // Neutrino interaction vertex from MC
     bool                MC_isCCQE;                // is CCQE?
     int                 run;                      // current run number
     int                 subrun;                   // current subrun number

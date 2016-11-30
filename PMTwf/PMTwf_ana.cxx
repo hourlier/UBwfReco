@@ -114,6 +114,8 @@ namespace larlite {
     T->Branch("BNBparameters",BNBparameters,"BNBparameters[5]/D");
     T->Branch("isMC", &isMC);
     T->Branch("MC_T0",&MC_T0);
+    T->Branch("MC_Neutrino_vertex",MC_Neutrino_vertex,"MC_Neutrino_vertex[4]/D");
+    T->Branch("MCparticles","std::vector<int>", &MCparticles);
     T->Branch("recoT0",&recoT0);
     T->Branch("MC_isCCQE",&MC_isCCQE);
     T->Branch("is20PE",&is20PE);
@@ -742,7 +744,7 @@ namespace larlite {
   bool PMTwf_ana::LoadEventInfo(storage_manager* storage){
     auto ophits        = storage->get_data<event_ophit>("ophit");
     auto opflashes     = storage->get_data<event_opflash>("opflash");
-    //auto mcdata      = storage->get_data<event_mctrack>("mcreco");
+    auto mcdata        = storage->get_data<event_mctrack>("mcreco");
     auto mc            = storage->get_data<event_mctruth>("generator");
     auto opdetwaveform = storage->get_data<event_opdetwaveform>("pmtreadout");
     auto photonInfo    = storage->get_data<event_simphotons>("largeant");
@@ -762,10 +764,31 @@ namespace larlite {
       }
     }
     if(mc){
+      MCparticles.clear();
       if(mc->at(0).GetNeutrino().InteractionType() == simb::kCCQE){MC_isCCQE = true;}
       else{MC_isCCQE = false;}
+      for(size_t mctruth_index = 0; mctruth_index<mc->size();mctruth_index++){
+	auto const& mctruth = mc->at(mctruth_index);
+	for(size_t partcl = 0; partcl < (size_t)(mctruth.NParticles());partcl++){
+	  auto const& mcp = mctruth.GetParticle(partcl);
+	  if(mcp.StatusCode() == 0 && (mcp.PdgCode() == 12 || mcp.PdgCode() == -12 || mcp.PdgCode() == 14 || mcp.PdgCode() == -14 || mcp.PdgCode() == 16 || mcp.PdgCode() == -16)){
+	    auto const& pos = mcp.Position(0);
+	    MC_Neutrino_vertex[0] = pos.X();
+	    MC_Neutrino_vertex[1] = pos.Y();
+	    MC_Neutrino_vertex[2] = pos.Z();
+	    MC_Neutrino_vertex[3] = pos.T();
+	    MCparticles.push_back(mcp.PdgCode());
+	  }
+	}
+      }
     }
+
     if(mc || photonInfo){isMC = true;}else{isMC = false;}
+    if(mcdata){
+      for(UInt_t track = 0; track < mcdata->size(); track++){
+	MCparticles.push_back(mcdata->at(track).PdgCode());
+      }
+    }
     
     std::cout << "Run #" << storage->run_id() << "_" << storage->subrun_id() << "\t event #" << storage->event_id() << std::endl;
     run = storage->run_id();
