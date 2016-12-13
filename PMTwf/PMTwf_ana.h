@@ -59,26 +59,19 @@ namespace larlite {
     bool    FindPulses(Int_t ch);
     bool    FindAllPulses();
     bool    LoadEventInfo(storage_manager* storage);
-    bool    DrawFlashWF(Int_t flash, Int_t ch);
     void    DrawWF(Int_t ch);
-    bool    FitFlashWF(Int_t flash, Int_t ch);
-    bool    FitFlash(Int_t flash);
+    void    DrawWF(Int_t ch, int iter);
     void    FitWF(Int_t ch);
     void    IterateFitProcess(Int_t ch);
     bool    EvalBaseline(Int_t ch);
-    void    ComputeResidual(Int_t flash, Int_t ch); 
     void    ComputeResidual(Int_t ch);
-    bool    NeedNewPE(Int_t flash, Int_t ch);
     bool    NeedNewPE(Int_t ch);
     bool    GetBaselines();
     void    SetPElist(Int_t ch);
-    TF1*    InitializeFitFcn(Int_t flash, Int_t ch);
     TF1*    InitializeFitFcn(Int_t ch);
-    bool    IsFlashInBeam(Int_t flash);
-    bool    IsFlashBeforeBeam(Int_t flash);
     bool    IsSummedWFHighbeforeBeam();
-    bool    IsAmplitudeHighEnough(Int_t flash, Int_t ch);
     bool    IsAmplitudeHighEnough(Int_t ch);
+    bool    SaturateTooMuch(Int_t ch);
     void    DrawFilter(Int_t ch);
     double  FindFlash();
     bool    FindFlashT0();
@@ -113,12 +106,10 @@ namespace larlite {
     std::vector<double> RecoFlashesTimes;         // times of flashes for an event that I reco
     std::vector<double> HitTimes;                 // ophit times for a given WF
     std::vector<double> AllHitTimes[32];          // array of 32 vectors of the hit times for each waveforms
-    std::vector<double> RecoPulseTimes;           // times of the peaks found by FindPulses() for one WF
-    std::vector<double> RecoPulseTimesEvent[32];  // times of the peaks found by FindPulses() for all WF
     std::vector<double> PEwf1flash;               // PE per WF for 1 flash
     std::vector< std::vector<double> > PEflashWF; // PE per waveform for each flash
+    std::vector<PEhit>  SingleWF;
     std::vector< std::vector<PEhit> >  PElist;
-    std::vector<wfInfo> RecoWFinfo;               // full information on the waveforms
     
     
     // Fit parameters
@@ -129,6 +120,11 @@ namespace larlite {
     Int_t               kSigmaRise;               // rise time index
     Int_t               kSigmaFall;               // fall time index
     Int_t               NpeaksFound;              // Full number of pulses found
+    double              amp_FitMax;
+    double              sigma_R_FitMax;
+    double              sigma_R_FitMin;
+    double              sigma_F_FitMax;
+    double              sigma_F_FitMin;
     std::vector<double> WFparameters;             // all parameters for a given WF
     std::vector<double> WFparLimitHigh;           // higher limits
     std::vector<double> WFparLimitLow;            // Lower limits
@@ -178,6 +174,7 @@ namespace larlite {
     int                 FitRangeMin;
     int                 FitRangeMax;
     double              BNBparameters[5];         // baseline, amplitude, time, sigmas (rise/fall) 
+    PEhit               FirstPEFound;
     
 
   };

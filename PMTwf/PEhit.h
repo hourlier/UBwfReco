@@ -14,11 +14,12 @@ class PEhit{
   void SetTime(double t);
   void SetAmplitude(double Amp);
   void SetSigmas(double sigma_rise, double sigma_fall);
-  double GetTime();
-  double GetAmplitude();
-  double GetSigmaRise();
-  double GetSigmaFall();
-  double GetPEcharge();
+  double GetTime(){return _time;};
+  double GetAmplitude(){return _amplitude;};
+  double GetSigmaRise(){return _sigma_r;};
+  double GetSigmaFall(){return _sigma_f;};
+  double GetPEcharge(){return _peCharge;};
+  void  operator=(PEhit pe1);
 
  private:
   double _time;
@@ -28,32 +29,5 @@ class PEhit{
   double _peCharge;
 };
 
-class wfInfo : public std::vector<PEhit>{
- 
- public:
-  
-  wfInfo();
-  wfInfo(double baseline, double baselineRMS, std::vector<PEhit> PElist);
-  ~wfInfo();
-  void               SetWF(double baseline, double baselineRMS, std::vector<PEhit> PElist);
-  void               SetBaseline(double baseline, double baselineRMS);
-  void               SetPElist(std::vector<PEhit> PElist);
-  void               AddPE(PEhit newPE);
-  void               RemovePE(int PEindex);
-  int                GetNPE();
-  double             GetBaseline();
-  double             GetBaselineRMS();
-  double             GetRecoCharge();
-  std::vector<PEhit> GetPElist();
-  PEhit              GetPE(unsigned int PEindex);
-
- private:
-  
-  double _baseline;
-  double _baselineRMS;
-  double _chargeReconstructed;
-  std::vector<PEhit> _PElist;
-  
-};
 
 #endif
